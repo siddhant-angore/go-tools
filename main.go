@@ -58,46 +58,6 @@ func main() {
 	if failed > 0 {
 		os.Exit(1)
 	}
-
-	// Keeping only what I hold, and printing the NAVs for those ISINs.
-	// mine := make(map[string]NAV)
-	// for isin := range myISINs {
-	// 	if nav, ok := all[isin]; ok {
-	// 		mine[isin] = nav
-	// 	}
-	// }
-
-	// for isin, nav := range mine {
-	// 	fmt.Printf("%s %-45s %10s %s\n", isin, nav.Name, nav.Value, nav.Date)
-	// }
-
-	// Every loop before this one iterated over what was FOUND. This one
-	// iterates over what was WANTED. Without it, a fund that silently
-	// vanishes from the file looks exactly like a successful run.
-	// for isin := range myISINs {
-	// 	if _, ok := mine[isin]; !ok {
-	// 		log.Printf("Warning: No NAV found for %s", isin)
-	// 	}
-	// }
-
-	// Parsing a stream is a loop. The scanner reads a line, and the loop body processes it.
-	// for scanner.Scan() {
-	// 	countLines++
-	// 	if countLines <= 5 {
-	// 		// Text() returns the current line as string without the newline character.
-	// 		// The scanner keeps the line in memory until the next Scan() call.
-	// 		fmt.Println(scanner.Text())
-	// 	}
-	// }
-
-	// // HINT: bufio.Scanner "scanner" is used in Scan loop at line 48 without final check of scanner.Err()
-	// // This is a common mistake. The scanner may have failed to read the stream, and the loop will exit without any indication of failure.
-	// // To check this, call scanner.Err() after the loop. If it returns non-nil, the scanner failed to read the stream.
-	// if err := scanner.Err(); err != nil {
-	// 	log.Fatal(err)
-	// }
-
-	// fmt.Println("Total lines: ", countLines)
 }
 
 // NAV is one scheme's published net asset value.
