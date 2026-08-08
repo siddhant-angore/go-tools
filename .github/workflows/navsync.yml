@@ -2,7 +2,7 @@ name: NAV sync
 
 on:
     schedule:
-        - cron: '00 15 * * 1-5'
+        - cron: '38 15 * * 1-5'
         - cron: '30 2 * * 2-6'
     workflow_dispatch:
 
