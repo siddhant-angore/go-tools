@@ -9,10 +9,6 @@ finishing successfully while being wrong.
 The code this post describes lives at
 [github.com/siddhant-angore/go-tools](https://github.com/siddhant-angore/go-tools).
 
-> Screenshots are referenced as `images/NN.png`. Notion serves them from
-> signed URLs that expire, so they need re-exporting from the source page
-> before this renders complete.
-
 ---
 
 I keep eleven mutual funds in a Notion table. Every column in it was right except two: the price of each fund, and the date that price was published. Those two I typed in by hand, most evenings, reading them off my broker's app.
@@ -27,7 +23,7 @@ Then the [Fly.io](http://Fly.io) bill arrived. $166.20.
 
 I went and looked at what I had actually built. Ninety-seven percent of it was never meant to be seen by anyone but me. I had been paying public hosting rates to run a private notebook.
 
-![Fly.io bill](image.png)
+![Six months of Fly.io hosting, $166.20](images/01-flyio-bill.png)
 
 So I went back to Notion on the Plus plan, $12 a month. Cheaper than the server, and I stopped redesigning it every two weeks.
 
@@ -41,7 +37,7 @@ So I went back to Notion on the Plus plan, $12 a month. Cheaper than the server,
 
 - A Go program that fills in the two columns I was typing by hand.
 
-![alt text](image-16.png)
+![The finished thing: a NAV chart in Notion across all eleven funds](images/02-navs-chart.png)
 
 ---
 
@@ -51,7 +47,7 @@ Two tables. One row per fund I hold, one row per transaction. The Go program onl
 
 ### One row per fund I own
 
-![alt text](image-1.png)
+![The Instruments table, one row per fund I hold](images/03-instruments-table.png)
 
 Three fields are facts I type in once:
 
@@ -65,15 +61,15 @@ Everything below is worked out by Notion, not by me:
 
 1. **Invested value** (`invested_value`) is calculated by summing the each investment lot under this instrument.
 
-    ![alt text](image-2.png)
+    ![invested_value sums the invested amount of every lot under this instrument](images/04-formula-invested-value.png)
 
 2. **Current value** (`current_value`) is calculated by getting the total units accumulated under this instrument multiplied by their latest NAV (Net Asset Value).
 
-    ![alt text](image-3.png)
+    ![current_value multiplies total units by the latest NAV](images/05-formula-current-value.png)
 
 3. **Percentage** (`percentage`) shows by how much percent the instrument has grown. `((currentValue - investedValue)/investedValue)*100`
 
-    ![alt text](image-4.png)
+    ![percentage, the growth between invested value and current value](images/06-formula-percentage.png)
 
 4. **NAV** (`nav`) and **NAV Date** (`nav_date`) come from AMFI. These two are the only things the Go program writes. Every number above them is built on top of these.
 
@@ -83,17 +79,17 @@ Everything below is worked out by Notion, not by me:
 
 The second table records each purchase: which fund, how many units, at what price. One fund collects many of these rows over time.
 
-![alt text](image-5.png)
+![The Investment logs table, one row per purchase](images/07-investment-logs-table.png)
 
 Four fields matter:
 
 1. **Instrument** (`investment_instrument`) in which we are investing. This is related to the `Instrument` table. `Each investment` will have a relation with `Instrument`, only one instrument can be selected for an investment.
 
-    ![alt text](image-6.png)
+    ![investment_instrument, a relation pointing at one row in Instruments](images/08-relation-instrument.png)
 
 2. **Date** (`nav_date`) `Rollup`
 
-    ![alt text](image-7.png)
+    ![The date on a log row, rolled up from the instrument](images/09-rollup-date.png)
 
 3. **Units allotted** (`units`) `number`
 
@@ -103,29 +99,28 @@ The rest are calculated. None of them are needed for the program to run.
 
 1. **Invested value** (`invested_value`) is just **units allotted** x **average price**.
 
-    ![alt text](image-8.png)
+    ![invested_value on a lot: units allotted multiplied by average price](images/10-formula-lot-invested.png)
 
 2. **Current value** (`current_value`) is just **units allotted** x **NAV**.
 
-    ![alt text](image-9.png)
+    ![current_value on a lot: units allotted multiplied by NAV](images/11-formula-lot-current.png)
 
 3. **Percentage** (`percentage_growth`) by how much percent the instrument has grown. `((currentValue - investedValue)/investedValue)*100`
 
-    ![alt text](image-10.png)
+    ![percent_growth on a lot](images/12-formula-lot-percentage.png)
 
 4. **NAV** (`nav`) & **NAV Date** (`nav_date`) are fetched from the real time source.* *But for this DB we will be just getting them from `Instruments` table.
 
-                        ![alt text](image-11.png)
-                        ![alt text](image-12.png)
+    ![nav on a log row is a rollup: relation investment_instrument, target property nav](images/13-rollup-nav.png)
+    ![nav_date on a log row is the same rollup, targeting nav_date](images/14-rollup-nav-date.png)
 
-            Two fields I have not mentioned:
+Two fields I have not mentioned:
 
 1. `lot_name`: As every Notion DB requires a title you can have anything in this, it is *not important*.
 
 2. `lots`: Relates to the `Lots`/`Logs`/`Each investment` DB whatever you have named it.
 
-    ![alt text](image-13.png)
-    
+    ![The lots relation on an instrument](images/15-relation-lots.png)
 
 > That is the whole schema. Change it to fit your own holdings. Only `isin`, `nav` and `nav_date` matter to the code.
 
@@ -777,11 +772,11 @@ Notion does not hand out access to anything by default. Two steps:
 
 1. Create an internal integration at [https://app.notion.com/developers/connections](https://app.notion.com/developers/connections). This gives you a token, a long secret string.
 
-    ![alt text](image-14.png)
+    ![Creating the internal integration, which issues the token](images/16-create-integration.png)
 
 2. Open your database, go to Connections, and add that integration.
 
-    ![alt text](image-15.png)
+    ![Adding the integration to the database under Connections](images/17-add-connection.png)
 
 Step 2 is the one people skip, and it catches nearly everyone. Without it the token is valid but the database is invisible. You get a clean response with zero results, which looks a lot like an empty database.
 
