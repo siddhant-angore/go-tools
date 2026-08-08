@@ -1,5 +1,8 @@
 .env
 .claude/
 CLAUDE.md
-blogs/
+# Blog drafts. blogs/public/ is published with the repo.
+# blogs/private/ never leaves this machine: platform-specific drafts,
+# unpublished sections, anything not ready to be read.
+blogs/private/
 
