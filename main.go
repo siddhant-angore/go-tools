@@ -11,6 +11,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -20,56 +21,6 @@ const (
 )
 
 func main() {
-
-	// Go has no throw/catch. A function that can fail returns what you
-	// wanted AND what went wrong, side by side. The cost is three extra
-	// lines everywhere; the benefit is that every failure point is
-	// visible at the call site and cannot silently jump up the stack.
-	// res, err := http.Get("https://www.amfiindia.com/spages/NAVAll.txt")
-
-	// err must be checked BEFORE touching res, because res is
-	// meaningless when err is non-nil. Reading res
-	// first simply does not make sense.
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-
-	// The network response is not a document/object, but a stream of bytes. It's an open pipe.
-	// When http.Get returns, the stream is open and must be closed when we are done with it.
-	// A connection is limited resource, and if you leak it, your program will eventually run out of connections and fail.
-	// The idiomatic way to ensure that the stream is closed is to schedule it with defer immediately after the error check.
-	// defer res.Body.Close()
-
-	// The network has no concept of a line.
-	//
-	// TCP delivers arbitrary blobs. One packet might carry two & a half lines;
-	// one line might extend across three packets.
-	// res.Body is bytes with no structure at all.
-	// The bufio package provides a buffered reader that can read lines from a stream of bytes.
-	//
-	// bufio.NewScanner returns a scanner that reads from res.Body.
-	// The scanner has a buffer and can read lines from the stream.
-	//
-	// It accepts any io.Reader, so same line works against a file, a string, or a network stream / response.
-	// scanner := bufio.NewScanner(res.Body)
-
-	// countLines := 0
-
-	// Funds that I hold, keyed by ISIN. This is a map of string to bool struct.
-	// myISINs := map[string]bool{
-	// 	"INF0R8F01026": true,
-	// 	"INF789F01XA0": true,
-	// 	"INF966L01986": true,
-	// 	"INF663L01DV3": true,
-	// 	"INF879O01027": true,
-	// 	"INF204K01YC4": true,
-	// 	"INF204KB14I2": true,
-	// 	"INF769K01DM9": true,
-	// 	"INF204KB1V68": true,
-	// 	"INF732E01045": true,
-	// 	"INF846K01K35": true,
-	// }
-
 	start := time.Now()
 
 	token := os.Getenv("NOTION_TOKEN")
@@ -98,41 +49,9 @@ func main() {
 	}
 	log.Printf("Parsed %d ISINs from AMFI.", len(navs))
 
-	updated, failed := 0, 0
-
-	for isin, pageIDs := range rows {
-		nav, ok := navs[isin]
-		if !ok {
-			log.Printf("Warning: No NAV for %s", isin)
-			failed += len(pageIDs)
-			continue
-		}
-
-		value, err := strconv.ParseFloat(nav.Value, 64)
-		if err != nil {
-			log.Printf("Skipping %s: Bad NAV %q: %v", isin, nav.Value, err)
-			failed += len(pageIDs)
-			continue
-		}
-
-		t, err := time.Parse("02-Jan-2006", nav.Date)
-		if err != nil {
-			log.Printf("Skipping %s: Bad Date %q: %v", isin, nav.Date, err)
-			failed += len(pageIDs)
-			continue
-		}
-		isoDate := t.Format("2006-01-02")
-
-		for _, pageID := range pageIDs {
-			if err := updateNAV(token, pageID, value, isoDate); err != nil {
-				log.Printf("Failed %s (%s): %v", isin, pageID, err)
-				failed++
-				continue
-			}
-			updated++
-			fmt.Printf("%s %-45s %10s %s %s\n", isin, nav.Name, nav.Value, nav.Date, pageID)
-		}
-	}
+	jobs, skipped := buildJobs(rows, navs)
+	updated, failed := runUpdates(token, jobs)
+	failed += skipped
 
 	log.Printf("Done in %s: %d updated, %d failed", time.Since(start).Round(time.Millisecond), updated, failed)
 
@@ -434,4 +353,97 @@ func updateNAV(token, pageID string, nav float64, isoDate string) error {
 	}
 
 	return nil
+}
+
+type job struct {
+	isin    string
+	pageID  string
+	value   float64
+	isoDate string
+}
+
+type result struct {
+	isin   string
+	pageID string
+	err    error
+}
+
+func buildJobs(rows map[string][]string, navs map[string]NAV) (jobs []job, skipped int) {
+	for isin, pageIDs := range rows {
+		nav, ok := navs[isin]
+		if !ok {
+			log.Printf("Warning: No NAV for %s", isin)
+			skipped += len(pageIDs)
+			continue
+		}
+
+		value, err := strconv.ParseFloat(nav.Value, 64)
+		if err != nil {
+			log.Printf("Skipping %s: Bad Value Value %q: %v", isin, nav.Value, err)
+			skipped += len(pageIDs)
+			continue
+		}
+
+		t, err := time.Parse("02-Jan-2006", nav.Date)
+		if err != nil {
+			log.Printf("Skipping %s: Bad Date %q: %v", isin, nav.Date, err)
+			skipped += len(pageIDs)
+			continue
+		}
+		isoDate := t.Format("2006-01-02")
+
+		for _, pageID := range pageIDs {
+			jobs = append(jobs, job{
+				isin:    isin,
+				pageID:  pageID,
+				value:   value,
+				isoDate: isoDate,
+			})
+		}
+	}
+
+	return jobs, skipped
+}
+
+func runUpdates(token string, jobs []job) (updated, failed int) {
+	jobChannel := make(chan job)
+	resultChannel := make(chan result, len(jobs))
+
+	limiter := time.NewTicker(334 * time.Millisecond)
+	defer limiter.Stop()
+
+	var waitGroup sync.WaitGroup
+	for i := 0; i < 3; i++ {
+		waitGroup.Add(1)
+		go func() {
+			defer waitGroup.Done()
+			for j := range jobChannel {
+				<-limiter.C
+
+				t0 := time.Now()
+				err := updateNAV(token, j.pageID, j.value, j.isoDate)
+				log.Printf("%s took %s", j.isin, time.Since(t0).Round(time.Millisecond))
+				resultChannel <- result{isin: j.isin, pageID: j.pageID, err: err}
+			}
+		}()
+	}
+
+	for _, j := range jobs {
+		jobChannel <- j
+	}
+	close(jobChannel)
+
+	waitGroup.Wait()
+	close(resultChannel)
+
+	for r := range resultChannel {
+		if r.err != nil {
+			log.Printf("Failed %s (%s): %v", r.isin, r.pageID, r.err)
+			failed++
+			continue
+		}
+		updated++
+	}
+
+	return updated, failed
 }
